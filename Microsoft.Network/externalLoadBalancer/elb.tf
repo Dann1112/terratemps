@@ -1,0 +1,75 @@
+resource "azurerm_public_ip" "prod_lb_public_ip" {
+  name                = "${var.lb_name}-PIP"
+  location            = var.location
+  resource_group_name = var.rsg_name
+  allocation_method   = "Static"
+  sku                 = var.lb_sku
+}
+
+resource "azurerm_lb" "prod_lb" {
+  name                = var.lb_name
+  location            = var.location
+  resource_group_name = var.rsg_name
+  sku                 = var.lb_sku
+
+  frontend_ip_configuration {
+    name                 = "${var.lb_name}-FE"
+    public_ip_address_id = azurerm_public_ip.prod_lb_public_ip.id
+  }
+
+  tags = {
+    Environment = var.environment
+    BuildBy     = var.buildby
+    BuildTicket = var.buildticket
+    BuildDate   = replace(substr(timestamp(), 0, 10), "-", "")
+  }
+}
+
+resource "azurerm_lb_backend_address_pool" "prod_lb_backend_pool" {
+  resource_group_name = var.rsg_name
+  loadbalancer_id     = azurerm_lb.prod_lb.id
+  name                = "${var.lb_name}-BEP"
+}
+
+resource "azurerm_lb_probe" "prod_lb_probe" {
+  resource_group_name = var.rsg_name
+  loadbalancer_id     = azurerm_lb.prod_lb.id
+  name                = "${var.lb_name}-PRB"
+  port                = 80
+}
+
+########################
+# Load Balancing rule. If you are creating this ELB for the purpose of providing internet access to VMs in a ILB.
+# Uncomment and use the outbound rule below as opposed to this load balancing rule.
+########################
+resource "azurerm_lb_rule" "prod_lb_rule" {
+  resource_group_name            = var.rsg_name
+  loadbalancer_id                = azurerm_lb.prod_lb.id
+  name                           = "LBRule"
+  protocol                       = "Tcp"
+  frontend_port                  = 80
+  backend_port                   = 80
+  frontend_ip_configuration_name = "${var.lb_name}-FE"
+  backend_address_pool_id        = azurerm_lb_backend_address_pool.prod_lb_backend_pool.id
+  probe_id                       = azurerm_lb_probe.prod_lb_probe.id
+  load_distribution              = "Default"
+}
+
+########################
+# Outbound rule. If you are creating this ELB for the purpose of providing internet access to VMs in a ILB.
+# Uncomment and use this outbound rule as opposed to the load balancing rule above
+########################
+/*
+resource "azurerm_lb_outbound_rule" "prod_lb_outbound_rule" {
+  resource_group_name     = "${var.rsg_name}"
+  loadbalancer_id         = "${azurerm_lb.prod_lb.id}"
+  backend_address_pool_id = "${azurerm_lb_backend_address_pool.prod_lb_backend_pool.id}"
+  name                    = "${var.lb_name}-OBR"
+  protocol                = "All"
+  idle_timeout_in_minutes = 15
+
+  frontend_ip_configuration {
+    name = "${var.lb_name}-FE"
+  }
+}
+*/
